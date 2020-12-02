@@ -1,5 +1,8 @@
 module DayTwo (solutions) where
 
+import Data.Functor.Identity
+import Text.Parsec
+
 data PasswordEntry = PasswordEntry
   { policy :: Policy,
     password :: String
@@ -9,14 +12,18 @@ data PasswordEntry = PasswordEntry
 data Policy = Policy
   { firstNumber :: Int,
     secondNumber :: Int,
-    letter :: Char
+    letter_ :: Char
   }
   deriving (Show)
 
 solutions :: IO ()
 solutions =
   linesAsPasswordEntries "./data/02.data"
-    >>= print . solveTwo
+    >>= ( \case
+            Left _ -> print "parser failed"
+            Right entries ->
+              print (solveOne entries) >> print (solveTwo entries)
+        )
 
 solveOne :: [PasswordEntry] -> Int
 solveOne = length . filter isValidPasswordOne
@@ -25,48 +32,55 @@ solveTwo :: [PasswordEntry] -> Int
 solveTwo = length . filter isValidPasswordTwo
 
 isValidPasswordOne :: PasswordEntry -> Bool
-isValidPasswordOne entry =
-  characterOccurrences >= (firstNumber . policy $ entry)
-    && characterOccurrences <= (secondNumber . policy $ entry)
+isValidPasswordOne PasswordEntry {policy, password} =
+  characterOccurrences >= firstNumber policy
+    && characterOccurrences <= secondNumber policy
   where
-    characterOccurrences = countCharacter (letter . policy $ entry) (password entry)
+    characterOccurrences = countCharacter (letter_ policy) password
 
 countCharacter :: Char -> String -> Int
 countCharacter character =
   length . filter (== character)
 
 isValidPasswordTwo :: PasswordEntry -> Bool
-isValidPasswordTwo entry =
-  (firstCharacter == (letter . policy $ entry) && secondCharacter /= (letter . policy $ entry))
-    || (firstCharacter /= (letter . policy $ entry) && secondCharacter == (letter . policy $ entry))
+isValidPasswordTwo PasswordEntry {policy, password} =
+  (firstCharacter == char && secondCharacter /= char)
+    || (firstCharacter /= char && secondCharacter == char)
   where
-    firstCharacter = password entry !! (zeroOffset . firstNumber . policy $ entry)
-    secondCharacter = password entry !! (zeroOffset . secondNumber . policy $ entry)
+    firstCharacter = password !! (zeroOffset . firstNumber $ policy)
+    secondCharacter = password !! (zeroOffset . secondNumber $ policy)
+    char = letter_ policy
 
 zeroOffset :: Int -> Int
 zeroOffset x = x - 1
 
--- Parsing the input as password entries; would be good to use a parser instead
-
-linesAsPasswordEntries :: String -> IO [PasswordEntry]
+linesAsPasswordEntries :: String -> IO (Either ParseError [PasswordEntry])
 linesAsPasswordEntries filepath =
-  map parseEntry . lines <$> readFile filepath
+  Text.Parsec.parse parsePasswords "" <$> readFile filepath
 
-parseEntry :: String -> PasswordEntry
-parseEntry line =
-  PasswordEntry
-    (parsePolicy line)
-    (tail . dropWhile notASpace . tail . dropWhile notASpace $ line)
+parsePasswords :: ParsecT String () Identity [PasswordEntry]
+parsePasswords =
+  Text.Parsec.many1 (parseEntry <* Text.Parsec.char '\n')
 
-parsePolicy :: String -> Policy
-parsePolicy line =
+parseEntry :: ParsecT String () Identity PasswordEntry
+parseEntry =
+  PasswordEntry <$> parsePolicy <*> parsePassword
+
+parsePolicy :: ParsecT String () Identity Policy
+parsePolicy =
   Policy
-    (read . takeWhile notADash $ line)
-    (read . takeWhile notASpace . tail . dropWhile notADash $ line)
-    ((!! 1) . dropWhile notASpace $ line)
+    <$> number
+    <* Text.Parsec.char '-'
+    <*> number
+    <* Text.Parsec.char ' '
+    <*> Text.Parsec.anyChar
 
-notASpace :: Char -> Bool
-notASpace = (/=) ' '
+number :: ParsecT String () Identity Int
+number =
+  read <$> Text.Parsec.many1 Text.Parsec.digit
 
-notADash :: Char -> Bool
-notADash = (/=) '-'
+parsePassword :: ParsecT String () Identity String
+parsePassword =
+  Text.Parsec.char ':'
+    *> Text.Parsec.char ' '
+    *> Text.Parsec.many1 Text.Parsec.letter
