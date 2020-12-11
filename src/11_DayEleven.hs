@@ -1,7 +1,7 @@
 module DayEleven where
 
-import Debug.Trace
-import Control.Parallel.Strategies
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 
 data Cell
   = Floor
@@ -17,9 +17,9 @@ data Location = Location
   { x :: Int,
     y :: Int
   }
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
-type Cells = [(Location, Cell)]
+type Cells = Map Location Cell
 
 solutions :: IO ()
 solutions =
@@ -29,7 +29,7 @@ solutions =
 
 solveOne :: Cells -> Int
 solveOne =
-  length . filter isOccupied . solveOne_ []
+  length . Map.filter isOccupied . solveOne_ Map.empty
 
 solveOne_ :: Cells -> Cells -> Cells
 solveOne_ cells cells'
@@ -38,33 +38,33 @@ solveOne_ cells cells'
 
 tick :: Cells -> Cells
 tick cells =
-  parMap rseq (evolveCell cells) cells
+  Map.mapWithKey (evolveCell cells) cells
 
-evolveCell :: Cells -> (Location, Cell) -> (Location, Cell)
-evolveCell cells cell@(location, Seat Empty) =
+evolveCell :: Cells -> Location -> Cell -> Cell
+evolveCell cells location (Seat Empty) =
   if occupiedNearby cells location == 0
-    then (location, Seat Occupied)
-    else cell
-evolveCell cells cell@(location, Seat Occupied) =
+    then Seat Occupied
+    else Seat Empty
+evolveCell cells location (Seat Occupied) =
   if occupiedNearby cells location >= 4
-    then (location, Seat Empty)
-    else cell
-evolveCell _ cell = cell
+    then Seat Empty
+    else Seat Occupied
+evolveCell _ _ cell = cell
 
 occupiedNearby :: Cells -> Location -> Int
 occupiedNearby cells =
-  length . filter isOccupied . findNeighbours cells
+  length . Map.filter isOccupied . findNeighbours cells
 
-isOccupied :: (Location, Cell) -> Bool
-isOccupied (_, Seat Occupied) = True
+isOccupied :: Cell -> Bool
+isOccupied (Seat Occupied) = True
 isOccupied _ = False
 
 findNeighbours :: Cells -> Location -> Cells
 findNeighbours cells location =
-  filter (isNeighbour location) cells
+  Map.filterWithKey (isNeighbour location) cells
 
-isNeighbour :: Location -> (Location, Cell) -> Bool
-isNeighbour location (location', _) =
+isNeighbour :: Location -> Location -> Cell -> Bool
+isNeighbour location location' _ =
   abs (row - row') <= 1
     && abs (column - column') <= 1
     && location /= location'
@@ -78,9 +78,9 @@ isNeighbour location (location', _) =
 
 linesAsCells :: String -> Cells
 linesAsCells =
-  concatMap parseRow . zip [0 ..] . lines
+  Map.fromList . concatMap parseRow . zip [0 ..] . lines
 
-parseRow :: (Int, String) -> Cells
+parseRow :: (Int, String) -> [(Location, Cell)]
 parseRow (rowNumber, row) =
   zipWith (parseCell rowNumber) [0 ..] row
 
@@ -95,10 +95,10 @@ parseCell rowNumber columnNumber char =
 
 -- Print
 
-showCells :: Cells -> String
-showCells [] = ""
-showCells cells =
-  (map toChar . take 10 $ cells) ++ "\n" ++ showCells (drop 10 cells)
+--showCells :: Cells -> String
+--showCells [] = ""
+--showCells cells =
+--  (map toChar . take 10 $ cells) ++ "\n" ++ showCells (drop 10 cells)
 
 toChar :: (Location, Cell) -> Char
 toChar (_, Floor) = '.'
