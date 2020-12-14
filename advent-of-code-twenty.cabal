@@ -20,3 +20,4 @@ library
                      , hspec
                      , parsec
                      , regex-tdfa
+                     , containers
